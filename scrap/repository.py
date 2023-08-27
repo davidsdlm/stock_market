@@ -1,6 +1,5 @@
 from .models import News
 from .db import DB
-import psycopg
 
 
 def retry_policy(retry_cnt=0):

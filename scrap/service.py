@@ -23,14 +23,14 @@ class Service:
                 return
 
         self.latest_news = news
-        insert_news(self.context, news)
+        insert_news(self.db, news)
 
     def __enter__(self):
         return self
 
     def __call__(self, *args, **kwargs):
         logger.info("initialize db")
-        self.context.start_up()
+        self.db.start_up()
         logger.info("initialize scheduler")
         self.scheduler.start_up(self.service)
 
@@ -38,4 +38,4 @@ class Service:
         logger.info("shutdown scheduler")
         self.scheduler.shut_down()
         logger.info("shutdown db")
-        self.context.shut_down()
+        self.db.shut_down()

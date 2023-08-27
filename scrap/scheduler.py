@@ -14,7 +14,8 @@ class Scheduler:
     def listener(self, event):
         logger.exception(f'Job {event.job_id} raised {event.exception.__class__.__name__}')
         self.fail_counter += 1
-        self.scheduler.shutdown()
+        if self.fail_counter > 5:
+            self.scheduler.shutdown()
 
     def start_up(self, func):
         if self.scheduler is None:

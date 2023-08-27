@@ -11,8 +11,6 @@ from fake_useragent import UserAgent
 
 logger = logging.getLogger('main')
 
-user_agent = UserAgent()
-
 
 class BaseScraper(abc.ABC):
     @abc.abstractmethod
@@ -28,46 +26,55 @@ class BaseScraper(abc.ABC):
         }
         self.url = None
         self.catalogue_url = None
+        self.user_agent = UserAgent()
 
     @abc.abstractmethod
-    def get_html(self, url):
+    def extract_text(self, html: str) -> str:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def extract_text(self, html):
+    def extract_latest_news_url(self, html: str) -> str:
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def extract_latest_news_url(self, html):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def scrap_news(self):
-        raise NotImplementedError
+    def get_html(self, url: str) -> str:
+        req = requests.get(url, headers=self.headers)
+        return req.text
 
     def change_headers(self):
-        self.headers['User-Agent'] = user_agent.random
+        self.headers['User-Agent'] = self.user_agent.random
         self.headers['Cookie'] = ''
 
         req = requests.get(self.url, headers=self.headers)
         cookie_string = "; ".join([str(x) + "=" + str(y) for x, y in req.cookies.get_dict().items()])
         self.headers['Cookie'] = cookie_string
 
+    def scrap_news(self) -> News:
+        try:
+            logger.info(f'connect to {self.url}')
+            catalogue_html = self.get_html(self.catalogue_url)
+            news_url = self.extract_latest_news_url(catalogue_html)
+            news_html = self.get_html(news_url)
+            news_text = self.extract_text(news_html)
+            news_date = str(datetime.datetime.now(datetime.timezone.utc))
+            logger.info(f'connect to {self.url} finished')
+            return News(news_url, news_text, news_date)
+        except Exception as e:
+            self.change_headers()
+            e.__suppress_context__ = True
+            logger.exception("third part scraping error, change request headers",
+                             {"args": {"args_func": locals(), "args_class": self.__dict__.copy()}}, exc_info=True)
+
 
 class BloombergScraper(BaseScraper):
-    def __init__(self, url, category):
+    def __init__(self, url: str, category: str):
         BaseScraper.__init__(self)
         self.url = url
         self.category = category
         self.catalogue_url = self.url + '/' + self.category
 
-    def get_html(self, url):
-        req = requests.get(url, headers=self.headers)
-        html = BeautifulSoup(req.text, 'html.parser')
-        return html
-
     def extract_text(self, html):
-        article_json = str(html.find_all('script', attrs={'id': "__NEXT_DATA__"})[0].text)
+        html = BeautifulSoup(html, 'html.parser')
+        article_json = html.find_all('script', attrs={'id': "__NEXT_DATA__"})[0].text
 
         text = ''
         useless = False
@@ -75,7 +82,7 @@ class BloombergScraper(BaseScraper):
 
         def _decode_dict(dct):
             nonlocal useless, text
-            # values after news-rsf-contact-reporter class are useless so we add None and to mark
+            # values after news-rsf-contact-reporter class are useless, so we add None and to mark
             if dct.get('title', 0) == 'Read More':
                 useless = True
 
@@ -87,25 +94,7 @@ class BloombergScraper(BaseScraper):
         return text
 
     def extract_latest_news_url(self, html):
+        html = BeautifulSoup(html, 'html.parser')
         latest_news = html.find_all("h3", string='The Latest')[0].findNext('article').findNext('a')
         url_latest_news = self.url + latest_news['href']
-
         return url_latest_news
-
-    def scrap_news(self) -> News:
-
-        try:
-            catalogue_html = self.get_html(self.catalogue_url)
-            news_url = self.extract_latest_news_url(catalogue_html)
-            news_html = self.get_html(news_url)
-            news_text = self.extract_text(news_html)
-            news_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S %z")
-            return News(news_url, news_text, news_date)
-        except Exception as e:
-            params = locals().copy()
-            params.pop('self')
-            params.pop('e')
-            e.__suppress_context__ = True
-
-            logger.exception("third part scraping error", {"args": {"args_func": params, "args_class": self.__dict__}},
-                             exc_info=True)
