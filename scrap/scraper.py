@@ -82,8 +82,9 @@ class BloombergScraper(BaseScraper):
 
         def _decode_dict(dct):
             nonlocal useless, text
-            # values after news-rsf-contact-reporter class are useless, so we add None and to mark
-            if dct.get('title', 0) == 'Read More':
+            # values after news-rsf-contact-reporter class are useless, so we add None and to markq
+            if (dct.get('title', 0) == 'Read More'
+                    or dct.get('class') == "news-rsf-contact-reporter"):
                 useless = True
 
             if dct.get(text_key, 0) and not useless:

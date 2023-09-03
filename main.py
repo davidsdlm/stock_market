@@ -11,7 +11,7 @@ if __name__ == '__main__':
         port=5432
     )
 
-    interval = 30
+    interval = 60
     url = 'https://www.bloomberg.com'
     category = 'markets'
 
