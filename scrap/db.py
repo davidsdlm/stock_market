@@ -22,21 +22,15 @@ class DB:
     def shut_down(self):
         self.conn.close()
 
-    def __call__(self, func, retry_cnt, *args, **kwargs):
-        self.func = func
-        self.retry_cnt = retry_cnt
-        self.args = args
-        self.kwargs = kwargs
-        return self
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_val:
+    def execute_transaction(self, sql, data, retry_cnt):
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(sql, data)
+                self.conn.commit()
+        except psycopg.errors.DeadlockDetected or psycopg.errors.SerializationFailure:
             self.conn.rollback()
-        else:
-            self.conn.commit()
-        if exc_type == psycopg.errors.DeadlockDetected or exc_type == psycopg.errors.SerializationFailure:
-            if self.retry_cnt > 0:
-                self.func(self.retry_cnt - 1)
+            if retry_cnt > 0:
+                self.execute_transaction(sql, data, retry_cnt - 1)
+            else:
+                raise
+

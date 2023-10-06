@@ -1,13 +1,13 @@
 import abc
-import json
 import datetime
+import json
 import logging
-
-from .models import News
 
 import requests
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
+
+from .models import News
 
 logger = logging.getLogger('main')
 
@@ -17,12 +17,12 @@ class BaseScraper(abc.ABC):
     def __init__(self):
         self.headers = {
             'Connection': 'keep-alive',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 \
-                    (KHTML, like Gecko) Version/13.0.5 Safari/605.1.15',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                          '(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36 Edg/117.0.2045.43',
             'Upgrade-Insecure-Requests': '1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng, \
-                    */*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'Accept-Language': 'en-US,en;q=0.9'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                      'image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en'
         }
         self.url = None
         self.catalogue_url = None
@@ -50,17 +50,22 @@ class BaseScraper(abc.ABC):
 
     def scrap_news(self) -> News:
         try:
-            logger.info(f'connect to {self.url}')
+            logger.info(f'connect to {self.catalogue_url}')
             catalogue_html = self.get_html(self.catalogue_url)
+            logger.info(f'connect to {self.catalogue_url} finished')
+
             news_url = self.extract_latest_news_url(catalogue_html)
+
+            logger.info(f'connect to {news_url}')
             news_html = self.get_html(news_url)
+            logger.info(f'connect to {news_url} finished')
+
             news_text = self.extract_text(news_html)
             news_date = str(datetime.datetime.now(datetime.timezone.utc))
-            logger.info(f'connect to {self.url} finished')
             return News(news_url, news_text, news_date)
         except Exception as e:
-            self.change_headers()
-            e.__suppress_context__ = True
+            # self.change_headers()
+            # e.__suppress_context__ = True
             logger.exception("third part scraping error, change request headers",
                              {"args": {"args_func": locals(), "args_class": self.__dict__.copy()}}, exc_info=True)
 
@@ -97,5 +102,6 @@ class BloombergScraper(BaseScraper):
     def extract_latest_news_url(self, html):
         html = BeautifulSoup(html, 'html.parser')
         latest_news = html.find_all("h3", string='The Latest')[0].findNext('article').findNext('a')
+        print(latest_news['href'])
         url_latest_news = self.url + latest_news['href']
         return url_latest_news

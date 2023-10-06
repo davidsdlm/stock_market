@@ -112,4 +112,4 @@ LOGGING_CONFIG = {
 }
 
 logging.config.dictConfig(LOGGING_CONFIG)
-CustomLogger.supress_third_part_loggers()
+# CustomLogger.supress_third_part_loggers()
