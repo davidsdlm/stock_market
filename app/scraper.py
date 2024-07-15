@@ -1,15 +1,16 @@
 import abc
 import datetime
 import json
-import logging
+import urllib.parse
 
 import requests
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
+import structlog
 
-from .models import News
+from app import models
 
-logger = logging.getLogger('main')
+logger = structlog.getLogger("scraper")
 
 
 class BaseScraper(abc.ABC):
@@ -48,7 +49,7 @@ class BaseScraper(abc.ABC):
         cookie_string = "; ".join([str(x) + "=" + str(y) for x, y in req.cookies.get_dict().items()])
         self.headers['Cookie'] = cookie_string
 
-    def scrap_news(self) -> News:
+    def scrap_news(self) -> models.News:
         try:
             logger.info(f'connect to {self.catalogue_url}')
             catalogue_html = self.get_html(self.catalogue_url)
@@ -62,12 +63,9 @@ class BaseScraper(abc.ABC):
 
             news_text = self.extract_text(news_html)
             news_date = str(datetime.datetime.now(datetime.timezone.utc))
-            return News(news_url, news_text, news_date)
+            return models.News(id=news_url, content=news_text, date=news_date)
         except Exception as e:
-            # self.change_headers()
-            # e.__suppress_context__ = True
-            logger.exception("third part scraping error, change request headers",
-                             {"args": {"args_func": locals(), "args_class": self.__dict__.copy()}}, exc_info=True)
+            logger.exception("third part scraping error, change request headers", catalogue_url=self.catalogue_url)
 
 
 class BloombergScraper(BaseScraper):
@@ -75,9 +73,9 @@ class BloombergScraper(BaseScraper):
         BaseScraper.__init__(self)
         self.url = url
         self.category = category
-        self.catalogue_url = self.url + '/' + self.category
+        self.catalogue_url = urllib.parse.urljoin(self.url, self.category)
 
-    def extract_text(self, html):
+    def extract_text(self, html: str) -> str:
         html = BeautifulSoup(html, 'html.parser')
         article_json = html.find_all('script', attrs={'id': "__NEXT_DATA__"})[0].text
 
@@ -88,8 +86,7 @@ class BloombergScraper(BaseScraper):
         def _decode_dict(dct):
             nonlocal useless, text
             # values after news-rsf-contact-reporter class are useless, so we add None and to markq
-            if (dct.get('title', 0) == 'Read More'
-                    or dct.get('class') == "news-rsf-contact-reporter"):
+            if dct.get('title', 0) == 'Read More' or dct.get('class') == "news-rsf-contact-reporter":
                 useless = True
 
             if dct.get(text_key, 0) and not useless:
@@ -99,9 +96,10 @@ class BloombergScraper(BaseScraper):
 
         return text
 
-    def extract_latest_news_url(self, html):
+    def extract_latest_news_url(self, html: str) -> str:
         html = BeautifulSoup(html, 'html.parser')
-        latest_news = html.find_all("h3", string='The Latest')[0].findNext('article').findNext('a')
-        print(latest_news['href'])
-        url_latest_news = self.url + latest_news['href']
+        latest_news = (html.find('h3', string="Latest")
+                       .findNext('div', attrs={'data-component': 'headline'})
+                       .findNext('a'))
+        url_latest_news = urllib.parse.urljoin(self.url, latest_news['href'])
         return url_latest_news
