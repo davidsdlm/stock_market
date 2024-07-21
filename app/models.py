@@ -10,7 +10,8 @@ from sqlalchemy.types import ARRAY, String, Float
 
 
 class Base(DeclarativeBase):
-    id: Mapped[str] = mapped_column(primary_key=True)
+    pk: Mapped[str] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     date: Mapped[datetime] = mapped_column(server_default=func.now())
     content: Mapped[str]
     tokens = mapped_column(ARRAY(String))

@@ -10,6 +10,6 @@ class LLM:
 
     def text_to_embedding(self, text: str) -> schemas.EmbedderResponse:
         data = schemas.EmbedderRequest(text=text)
-        url = urllib.parse.urljoin(self.url, "embed")
+        url = urllib.parse.urljoin(self.url, "embed/")
         res = requests.post(url, json=data.model_dump()).json()
         return schemas.EmbedderResponse(**res)

@@ -3,27 +3,39 @@ import datetime
 import json
 import urllib.parse
 
+import backoff
 import requests
+import structlog
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
-import structlog
 
 from app import models
 
 logger = structlog.getLogger("scraper")
 
 
+class RobotPage(Exception):
+    def __init__(self):
+        super().__init__("We stuck on robot page")
+
+
 class BaseScraper(abc.ABC):
     @abc.abstractmethod
     def __init__(self):
         self.headers = {
-            'Connection': 'keep-alive',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                          '(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36 Edg/117.0.2045.43',
-            'Upgrade-Insecure-Requests': '1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
-                      'image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'en'
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en",
+            "Priority": "u=0, i",
+            "Sec-Ch-Ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Microsoft Edge";v="126"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": None,
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"
         }
         self.url = None
         self.catalogue_url = None
@@ -49,23 +61,25 @@ class BaseScraper(abc.ABC):
         cookie_string = "; ".join([str(x) + "=" + str(y) for x, y in req.cookies.get_dict().items()])
         self.headers['Cookie'] = cookie_string
 
+    @backoff.on_exception(backoff.expo, RobotPage, on_backoff=lambda details: details['args'][0].change_headers(),
+                          max_tries=3)
     def scrap_news(self) -> models.News:
-        try:
-            logger.info(f'connect to {self.catalogue_url}')
-            catalogue_html = self.get_html(self.catalogue_url)
-            logger.info(f'connect to {self.catalogue_url} finished')
+        logger.info(f'connect to {self.catalogue_url}')
+        catalogue_html = self.get_html(self.catalogue_url)
+        if BeautifulSoup(catalogue_html, 'html.parser').find("meta", attrs={"name": "robots"}):
+            raise RobotPage
 
-            news_url = self.extract_latest_news_url(catalogue_html)
+        logger.info(f'connect to {self.catalogue_url} finished')
 
-            logger.info(f'connect to {news_url}')
-            news_html = self.get_html(news_url)
-            logger.info(f'connect to {news_url} finished')
+        news_url = self.extract_latest_news_url(catalogue_html)
 
-            news_text = self.extract_text(news_html)
-            news_date = str(datetime.datetime.now(datetime.timezone.utc))
-            return models.News(id=news_url, content=news_text, date=news_date)
-        except Exception as e:
-            logger.exception("third part scraping error, change request headers", catalogue_url=self.catalogue_url)
+        logger.info(f'connect to {news_url}')
+        news_html = self.get_html(news_url)
+        logger.info(f'connect to {news_url} finished')
+
+        news_text = self.extract_text(news_html)
+        news_date = str(datetime.datetime.now(datetime.timezone.utc))
+        return models.News(pk=news_url, content=news_text, date=news_date)
 
 
 class BloombergScraper(BaseScraper):
